@@ -5,7 +5,6 @@ from twilio.rest import Client
 from datetime import datetime, timedelta
 import io
 
-
 # Inicialização da lista global de dados
 lista_clientes = []
 lista_nmr_clientes = []
@@ -54,7 +53,7 @@ def coletar_dados_cliente():
 
 # Função para fazer upload para o Dropbox
 def fazer_upload_para_dropbox():
-    ACCESS_TOKEN = 'sl.Bm0QsVPdOY8Mod2OcUb-IWtax4m05MrLZSOmIK_owMjdtymr03wI8L7lGXX8ZWvfHQGynM8BdJ6vYeSVCsT_d7CnaTmdW_wfuvdEX5croLw3D5kdDBzN7To_A_mo7dtX7teAhC3ifHdcMDM0Z_Ow80c'
+    ACCESS_TOKEN = 'sl.Bm8WoIrwop3ju77mTCaTV-4zjZgSACEek2HAVGO_LkKN7mQthp-iho3ERaTxdgJlqu0XZewqQ8sCfQvatsbbFDVuo0hida5T-YTYnJmNCH6NZvvZqr9OQuQ-3xkDio-SbMVAwMCf1HWFcJfXehjBv5I'
     dbx = dropbox.Dropbox(ACCESS_TOKEN)
 
     nome_arquivo_dropbox = '/clientes.xlsx'
@@ -105,6 +104,7 @@ def calculo_parcelas(data_vencimento, intervalo_dias, total_parcelas):
         datas_envio_sms.append(data_atual)
         data_atual += timedelta(days=intervalo_dias)
     return datas_envio_sms
+
 def sms_planilha_info():
     # Configurar suas credenciais do Twilio
     account_sid = 'ACae6b3430341fde63009bb4ccb9881310'
@@ -113,7 +113,7 @@ def sms_planilha_info():
     client_twilio = Client(account_sid, auth_token)
 
     # Configurar suas credenciais do Dropbox
-    access_token_dropbox = 'sl.Bm0QsVPdOY8Mod2OcUb-IWtax4m05MrLZSOmIK_owMjdtymr03wI8L7lGXX8ZWvfHQGynM8BdJ6vYeSVCsT_d7CnaTmdW_wfuvdEX5croLw3D5kdDBzN7To_A_mo7dtX7teAhC3ifHdcMDM0Z_Ow80c'
+    access_token_dropbox = 'sl.Bm8WoIrwop3ju77mTCaTV-4zjZgSACEek2HAVGO_LkKN7mQthp-iho3ERaTxdgJlqu0XZewqQ8sCfQvatsbbFDVuo0hida5T-YTYnJmNCH6NZvvZqr9OQuQ-3xkDio-SbMVAwMCf1HWFcJfXehjBv5I'
     dbx = dropbox.Dropbox(access_token_dropbox)
 
     # Nome do arquivo da planilha no Dropbox
@@ -137,33 +137,46 @@ def sms_planilha_info():
     # Data atual
     data_hoje = datetime.now()
 
-    # Iterar pelos dados dos clientes
-    for row in dados_clientes:
+    # Mostrar as entradas dos clientes
+    for idx, row in enumerate(dados_clientes, start=2):
         nome_cliente, numero_celular, _, _, _, parcela, valor_parcela, _, data_vencimento = row
+        data_vencimento = datetime.strptime(data_vencimento, '%d/%m/%y')  # Corrigir a formatação da data
+        print(f"{idx - 1}. Nome: {nome_cliente}, Celular: {numero_celular}, Parcela: {parcela}, Valor: R${valor_parcela:.2f}, Vencimento: {data_vencimento.strftime('%d/%m/%Y')}")
 
-        # Converter data de vencimento para datetime
-        data_vencimento = datetime.strptime(data_vencimento, '%d/%m/%y')
+    # Solicitar a seleção do cliente
+    while True:
+        try:
+            indice_cliente = int(input("Digite o índice do cliente para enviar a mensagem (0 para sair): "))
+            if 1 <= indice_cliente <= len(dados_clientes):
+                break
+            else:
+                print("Índice inválido. Por favor, escolha um índice válido.")
+        except ValueError:
+            print("Entrada inválida. Digite um número válido.")
 
-        # Calcular as datas de envio de SMS
-        datas_envio_sms = calculo_parcelas(data_vencimento, int(parcela), int(parcela))
+    if indice_cliente == 0:
+        print("Saindo do programa.")
+        return
 
-        # Enviar as mensagens de SMS agendadas
-        for i, data_envioSMS in enumerate(datas_envio_sms):
-            data_envioSMS_formatada = data_envioSMS.strftime("%d/%m/%Y")
-            mensagem = f"Olá {nome_cliente}, você está recebendo um aviso em relação à {i + 1}ª parcela no valor de R${valor_parcela:.2f} com vencimento em {data_envioSMS_formatada}. Providencie o pagamento."
+    # Cliente selecionado
+    nome_cliente, numero_celular, _, _, _, parcela, valor_parcela, _, data_vencimento = dados_clientes[indice_cliente - 1]
+    data_vencimento = datetime.strptime(data_vencimento, '%d/%m/%y')  # Corrigir a formatação da data
 
-            # Enviar a mensagem de SMS
-            message = client_twilio.messages.create(
-                body=mensagem,
-                from_=twilio_phone_number,
-                to= '+' + numero_celular
-            )
+    # Calcular as datas de envio de SMS apenas para a próxima parcela a vencer
+    datas_envio_sms = calculo_parcelas(data_vencimento, int(parcela), int(parcela))
+    data_proxima_parcela = datas_envio_sms[0]
 
-            print(f"Mensagem enviada para {nome_cliente}: {message.sid}")
+    # Enviar a mensagem de SMS para a próxima parcela a vencer
+    data_envioSMS_formatada = data_proxima_parcela.strftime("%d/%m/%Y")
+    mensagem = f"Olá {nome_cliente}, você está recebendo um aviso em relação à próxima parcela no valor de R${valor_parcela:.2f} com vencimento em {data_envioSMS_formatada}. Providencie o pagamento."
 
-if __name__ == "__main__":
-    # Chame a função coletar_dados_cliente para coletar os dados do cliente
-    coletar_dados_cliente()
+    # Enviar a mensagem de SMS
+    message = client_twilio.messages.create(
+        body=mensagem,
+        from_=twilio_phone_number,
+        to='+' + numero_celular
+    )
 
-    # Chame a função fazer_upload_para_dropbox para fazer upload dos dados do cliente para a planilha no Dropbox
-    fazer_upload_para_dropbox()
+    print(f"Mensagem enviada para {nome_cliente}: {message.sid}")
+
+
