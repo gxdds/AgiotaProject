@@ -1,9 +1,9 @@
 import openpyxl
 import dropbox
-import os
 from twilio.rest import Client
 from datetime import datetime, timedelta
 import io
+
 
 # Inicialização da lista global de dados
 lista_clientes = []
@@ -45,35 +45,26 @@ def coletar_dados_cliente():
     lista_valor_total.append(total_a_pagar)
 
     data_hoje = datetime.now()
-    data_formatada = data_hoje.strftime("%d/%m/%y")
+    data_formatada = data_hoje.strftime("%d/%m/%Y")  # Modificado para incluir o ano com quatro dígitos
     lista_data_cadastro.append(data_formatada)
 
     # Retorne os valores relevantes
-    return data_formatada, intervalo_pagamentos, parcelas
+    return cliente, nmr_cliente, valor, porcentagem, intervalo_pagamentos, parcelas, formatted_valor_parcela, total_a_pagar, data_formatada
 
 # Função para fazer upload para o Dropbox
-def fazer_upload_para_dropbox():
-    ACCESS_TOKEN = 'sl.Bm8WoIrwop3ju77mTCaTV-4zjZgSACEek2HAVGO_LkKN7mQthp-iho3ERaTxdgJlqu0XZewqQ8sCfQvatsbbFDVuo0hida5T-YTYnJmNCH6NZvvZqr9OQuQ-3xkDio-SbMVAwMCf1HWFcJfXehjBv5I'
-    dbx = dropbox.Dropbox(ACCESS_TOKEN)
+def adicionar_dados_planilha_local():
+    # Nome do arquivo da planilha na pasta do projeto
+    nome_arquivo = 'clientes.xlsx'
 
-    nome_arquivo_dropbox = '/clientes.xlsx'
-
-    # Use a biblioteca 'os' para criar o caminho completo do arquivo local
-    caminho_planilha_local = os.path.join(os.path.expanduser("~"), 'Dropbox', 'clientes.xlsx')
-
-    # Busque a planilha existente no Dropbox
+    # Tente carregar a planilha existente
     try:
-        metadata, response = dbx.files_download(nome_arquivo_dropbox)
-        with open(caminho_planilha_local, 'wb') as arquivo_local:
-            arquivo_local.write(response.content)
-        workbook = openpyxl.load_workbook(caminho_planilha_local)
-        sheet = workbook.active
-    except dropbox.exceptions.HttpError:
-        # Se a planilha não existir no Dropbox, crie uma nova
+        workbook = openpyxl.load_workbook(nome_arquivo)
+    except FileNotFoundError:
+        # Se a planilha não existir, crie uma nova
         workbook = openpyxl.Workbook()
-        sheet = workbook.active
-        # Adicione cabeçalhos à nova planilha
-        sheet.append(["Cliente", "Número", "Valor", "Porcentagem", "Pagamento (dias)", "Parcelas", "Valor Parcela", "Valor Total", "Data de Cadastro"])
+
+    # Obtenha a folha ativa
+    sheet = workbook.active
 
     # Encontre a próxima linha vazia na planilha
     proxima_linha = sheet.max_row + 1
@@ -90,20 +81,64 @@ def fazer_upload_para_dropbox():
         sheet.cell(row=proxima_linha + i, column=8, value=lista_valor_total[i])
         sheet.cell(row=proxima_linha + i, column=9, value=lista_data_cadastro[i])
 
-    # Salve a planilha atualizada localmente
-    workbook.save(caminho_planilha_local)
+    # Salve a planilha atualizada na pasta do projeto
+    workbook.save(nome_arquivo)
 
-    # Faça upload da planilha atualizada para o Dropbox
-    with open(caminho_planilha_local, 'rb') as arquivo:
-        dbx.files_upload(arquivo.read(), nome_arquivo_dropbox, mode=dropbox.files.WriteMode('overwrite'))
 
-def calculo_parcelas(data_vencimento, intervalo_dias, total_parcelas):
-    datas_envio_sms = []
-    data_atual = data_vencimento
-    for _ in range(total_parcelas):
-        datas_envio_sms.append(data_atual)
-        data_atual += timedelta(days=intervalo_dias)
-    return datas_envio_sms
+def calculo_parcelas():
+    # Nome do arquivo da planilha na pasta do projeto
+    nome_arquivo = 'clientes.xlsx'
+
+    # Tente carregar a planilha existente
+    try:
+        workbook = openpyxl.load_workbook(nome_arquivo)
+    except FileNotFoundError:
+        print("A planilha 'clientes.xlsx' não foi encontrada.")
+        return []
+
+    # Obtenha a folha ativa
+    sheet = workbook.active
+
+    # Data de hoje
+    data_atual = datetime.now().date()
+
+    # Lista para armazenar as informações de envio de SMS
+    infos_envio_sms = []
+
+    # Percorra as linhas da planilha
+    for row in sheet.iter_rows(min_row=2, values_only=True):
+        data_cadastro_str = row[8]  # Coluna 9 contém a data de cadastro
+
+        # Verifique se o valor da célula é None ou vazio
+        if data_cadastro_str is None or data_cadastro_str == "":
+            print("Data de cadastro ausente ou vazia.")
+            continue
+
+        # Verifique se o valor da célula é um objeto datetime
+        if isinstance(data_cadastro_str, datetime):
+            data_cadastro = data_cadastro_str.date()  # Converta para data se for datetime
+        else:
+            data_cadastro_str = str(data_cadastro_str)
+            try:
+                data_cadastro = datetime.strptime(data_cadastro_str, "%d/%m/%Y").date()  # Sempre com AAAA
+            except ValueError:
+                print(f"Erro na data de cadastro: '{data_cadastro_str}'. Verifique o formato (DD/MM/AAAA).")
+                continue
+
+        intervalo_pagamento = row[4]  # Coluna 5 contém o intervalo de pagamento em dias
+        nome_cliente = row[0]  # Coluna 1 contém o nome do cliente
+        telefone_cliente = row[1]  # Coluna 2 contém o telefone do cliente
+        valor_parcela = row[6]  # Coluna 7 contém o valor da parcela
+
+        # Calcule a diferença de meses desde a data de cadastro até a data atual
+        meses_desde_cadastro = (data_atual.year - data_cadastro.year) * 12 + (data_atual.month - data_cadastro.month)
+
+        # Verifique se a parcela deve ser paga hoje (mês seguinte ao cadastro)
+        if meses_desde_cadastro % intervalo_pagamento == 0:
+            numero_parcela = meses_desde_cadastro // intervalo_pagamento + 1
+            infos_envio_sms.append((nome_cliente, telefone_cliente, valor_parcela, numero_parcela))
+
+    return infos_envio_sms
 
 def sms_planilha_info():
     # Configurar suas credenciais do Twilio
