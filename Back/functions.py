@@ -47,9 +47,7 @@ def coletar_dados_cliente():
     lista_valor_total.append(total_a_pagar)
 
     data_hoje = datetime.now()
-    data_formatada = data_hoje.strftime(
-        "%d/%m/%Y"
-    )  # Modificado para incluir o ano com quatro dígitos
+    data_formatada = data_hoje.strftime("%d/%m/%Y")
     lista_data_cadastro.append(data_formatada)
 
     # Retorne os valores relevantes
@@ -117,8 +115,8 @@ def identificar_parcelas():
         print("A planilha não possui dados suficientes.")
         exit(1)
 
-    data_atual = datetime.now().date()
-    data_atual_formatada = data_atual.strftime("%d/%m/%y")
+    data_hoje = datetime.now()
+    data_atual = data_hoje.strftime("%d/%m/%Y")
 
     clientes_match = []
 
@@ -132,11 +130,20 @@ def identificar_parcelas():
         intervalo_pagamento = row[4]
         total_parcelas = row[5]
 
-        data_cadastro_dt = row[8].date() if isinstance(row[8], datetime) else row[8]
-        dias_desde_cadastro = (data_atual_formatada - data_cadastro_dt).days
+##############################################################################################################################################
+        # Converte a string de data para um objeto datetime
+        data_cadastro_string = row[8]
+        data_cadastro_date = datetime.strftime(data_cadastro_string, "%d/%m/%Y")
+        data_cadastro_formatada = datetime.strftime(data_cadastro_date, "%d/%m/%Y")
+        data_cadastro_formatada2 = datetime.strptime(data_cadastro_formatada, "%d/%m/%Y") #2023-09-02 00:00:00
+##############################################################################################################################################
+
+        dias_desde_cadastro = (data_hoje - data_cadastro_formatada2)
+        dias_desde_cadastro_formatado = dias_desde_cadastro.days
         total_dias_para_pagar = intervalo_pagamento * total_parcelas
 
-        if 0 < dias_desde_cadastro <= total_dias_para_pagar and dias_desde_cadastro % intervalo_pagamento == 0:
+
+        if 0 < dias_desde_cadastro_formatado <= total_dias_para_pagar and dias_desde_cadastro_formatado % intervalo_pagamento == 0:
             numero_parcela = dias_desde_cadastro // intervalo_pagamento
             clientes_match.append({
                 'Nome': nome_cliente,
