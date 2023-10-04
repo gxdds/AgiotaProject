@@ -1,53 +1,30 @@
 import openpyxl
-from twilio.rest import Client
-from datetime import datetime, timedelta
-
-# Inicialização da lista global de dados
-lista_clientes = []
-lista_nmr_clientes = []
-lista_valores = []
-lista_porcentagem = []
-lista_pagamento = []
-lista_parcelas = []
-lista_valor_parcelas = []
-lista_valor_total = []
-lista_data_cadastro = []
+from datetime import datetime
 
 
-# Função para coletar os dados do cliente
 def coletar_dados_cliente():
     cliente = input("Digite o nome do cliente: ")
-    lista_clientes.append(cliente)
 
     nmr_cliente = input("Digite o número do cliente (+55 + DDD + Cel): ")
-    lista_nmr_clientes.append(nmr_cliente)
 
     valor = int(input("Digite o valor emprestado ao cliente: "))
-    lista_valores.append(valor)
 
     porcentagem = int(input("Digite o valor da porcentagem de juros: "))
-    lista_porcentagem.append(porcentagem)
 
     intervalo_pagamentos = int(
         input("Digite a cada quanto tempo o cliente irá pagar (em dias): ")
     )
-    lista_pagamento.append(intervalo_pagamentos)
 
     parcelas = int(input("Digite o número de parcelas: "))
-    lista_parcelas.append(parcelas)
 
     valor_total = valor
     valor_parcela = (valor_total / parcelas) + (porcentagem / 100 * valor)
     formatted_valor_parcela = round(valor_parcela, 2)
-    lista_valor_parcelas.append(formatted_valor_parcela)
 
     total_a_pagar = valor_total * (1 + porcentagem / 100)
-    lista_valor_total.append(total_a_pagar)
 
     data_hoje = datetime.now()
-    data_hoje_form1 = datetime.strftime(data_hoje, "%d/%m/%y")
-    data_hoje_form2 = datetime.strptime(data_hoje_form1, "%d/%m/%y")
-    lista_data_cadastro.append(data_hoje_form2)
+    data_formatada = data_hoje.strftime("%d/%m/%y")  # Alterado o formato de %Y para %y
 
     # Retorne os valores relevantes
     return (
@@ -59,9 +36,8 @@ def coletar_dados_cliente():
         parcelas,
         formatted_valor_parcela,
         total_a_pagar,
-        data_hoje_form2,
+        data_formatada,
     )
-
 
 
 def adicionar_dados_planilha_local():
@@ -73,6 +49,7 @@ def adicionar_dados_planilha_local():
         workbook = openpyxl.Workbook()
 
     sheet = workbook.active
+
     def find_next_empty_row(sheet):
         for row in range(1, sheet.max_row + 1):
             if sheet.cell(row=row, column=1).value is None:
@@ -115,8 +92,6 @@ def identificar_parcelas():
         exit(1)
 
     data_hoje = datetime.now()
-    data_hoje_form1 = datetime.strftime(data_hoje, "%d/%m/%y")
-    data_hoje_form2 = datetime.strptime(data_hoje_form1, "%d/%m/%y")
 
     clientes_match = []
 
@@ -132,10 +107,21 @@ def identificar_parcelas():
 
         # Tentativa de converter a data de cadastro
         data_cadastro_str = row[8]
+        if not isinstance(data_cadastro_str, str):
+            print(
+                f"Erro na linha {sheet.index(row) + 1}: A data de cadastro não é uma string. Valor encontrado: {data_cadastro_str}")
+            continue
 
+        try:
+            data_cadastro = datetime.strptime(data_cadastro_str, "%d/%m/%Y")
+        except ValueError:
+            try:
+                data_cadastro = datetime.strptime(data_cadastro_str, "%d/%m/%y")
+            except ValueError:
+                print(f"Erro ao interpretar a data de {nome_cliente}. Formatos aceitos: dd/mm/yyyy e dd/mm/yy.")
+                continue
 
-
-        dias_desde_cadastro = (data_hoje_form2 - data_cadastro_str).days
+        dias_desde_cadastro = (data_hoje - data_cadastro).days
         total_dias_para_pagar = intervalo_pagamento * total_parcelas
 
         if 0 < dias_desde_cadastro <= total_dias_para_pagar and dias_desde_cadastro % intervalo_pagamento == 0:
@@ -149,19 +135,3 @@ def identificar_parcelas():
 
     workbook.close()
     return clientes_match
-
-def enviar_sms_cliente(nome_cliente, numero_celular, numero_parcela, valor_parcela):
-    account_sid = "ACae6b3430341fde63009bb4ccb9881310"
-    auth_token = "0c517bd637320f5e88532f7ad523f3b9"
-    twilio_phone_number = "+14783304454"
-    client_twilio = Client(account_sid, auth_token)
-
-    mensagem = f"Olá {nome_cliente}, hoje expira a data de pagamento da sua {numero_parcela}° parcela no valor de R${valor_parcela}."
-
-    message = client_twilio.messages.create(
-        body=mensagem,
-        from_=twilio_phone_number,
-        to=f'+{numero_celular}'
-    )
-    print(f"Mensagem enviada para {nome_cliente} ({numero_celular}): {message.sid}")
-
