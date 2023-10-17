@@ -2,6 +2,7 @@ import openpyxl
 from twilio.rest import Client
 from datetime import datetime, timedelta
 
+
 # Inicialização da lista global de dados
 lista_clientes = []
 lista_nmr_clientes = []

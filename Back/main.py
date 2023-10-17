@@ -1,4 +1,6 @@
 from functions import coletar_dados_cliente, adicionar_dados_planilha_local, identificar_parcelas, enviar_sms_cliente
+import openpyxl
+
 
 if __name__ == "__main__":
     # Colete os dados do cliente
